@@ -6,3 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+chip8 = {path = "../chip8"}
+clap = "3.2.8"
+sdl2 = "0.35.2"
+rand = "0.8.5"
