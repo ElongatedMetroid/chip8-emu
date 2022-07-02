@@ -1,4 +1,4 @@
-use std::{fs::OpenOptions, io::Read, process};
+use std::{fs::OpenOptions, io::{Read, self}, process};
 
 use chip8::Chip8;
 use clap::{Command, Arg};
@@ -12,8 +12,23 @@ fn main() {
     // initialize hardware
     let mut chip8 = Chip8::new(rand::random());
 
+    let mut rom = Vec::new();
     // handle the rom, open it and load it
-    handle_rom(&path, &mut chip8);
+    match open_rom(&mut rom, &path) {
+        Ok(_) => (),
+        Err(e) => {
+            eprintln!("There was an error in opening the ROM: {:?}", e);
+            process::exit(1);
+        },
+    }
+    match load_rom(&rom, &mut chip8) {
+        Ok(_) => (),
+        Err(e) => {
+            eprintln!("There was an error in loading the ROM: {:?}", e);
+            process::exit(1);
+        },
+    }
+    
     run(scale, &mut chip8);
 }
 
@@ -30,25 +45,23 @@ fn run<R: RngCore>(scale: u32, chip8: &mut Chip8<R>) {
     }
 }
 
-fn handle_rom<R: RngCore>(path: &str, chip8: &mut Chip8<R>) {
-    let mut rom = Vec::new();
-
+fn open_rom(rom: &mut Vec<u8>, path: &str) -> Result<(), io::Error> {
     OpenOptions::new()
         .read(true)
-        .open(path)
-        .expect("ROM does not exist")
-        .read_to_end(&mut rom)
-        .expect("Could not read ROM");
+        .open(path)?
+        .read_to_end(rom)?;
 
+    Ok(())
+}
+
+fn load_rom<R: RngCore>(rom: & Vec<u8>, chip8: &mut Chip8<R>) -> Result<(), chip8::Error> {
     match chip8.load_rom(&rom) {
         Ok(_) => {
             println!("Loaded ROM: Success");
             println!("Memory: {:?}", chip8.mem);
+            Ok(())
         },
-        Err(e) => {
-            eprintln!("There was a problem loading the ROM :(. {:?}", e);
-            process::exit(1);
-        }
+        Err(e) => Err(e)
     }
 }
 
