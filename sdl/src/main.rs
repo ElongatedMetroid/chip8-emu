@@ -1,13 +1,58 @@
-use std::{fs::OpenOptions, io::Read, time::{Instant, Duration}};
+use std::{fs::OpenOptions, io::Read, process};
 
 use chip8::Chip8;
 use clap::{Command, Arg};
 use rand::RngCore;
-use sdl2::{audio::AudioSpecDesired, pixels::{Color, PixelFormatEnum}, event::Event, keyboard::Keycode};
 
 extern crate chip8;
 
 fn main() {
+    let (path, scale) = parse_args();
+
+    // initialize hardware
+    let mut chip8 = Chip8::new(rand::random());
+
+    // handle the rom, open it and load it
+    handle_rom(&path, &mut chip8);
+    run(scale, &mut chip8);
+}
+
+fn run<R: RngCore>(scale: u32, chip8: &mut Chip8<R>) {
+    // setup graphics
+    // setup input
+
+    loop {
+        // emulate cycles
+
+        // draw image/update screen
+
+        // get input
+    }
+}
+
+fn handle_rom<R: RngCore>(path: &str, chip8: &mut Chip8<R>) {
+    let mut rom = Vec::new();
+
+    OpenOptions::new()
+        .read(true)
+        .open(path)
+        .expect("ROM does not exist")
+        .read_to_end(&mut rom)
+        .expect("Could not read ROM");
+
+    match chip8.load_rom(&rom) {
+        Ok(_) => {
+            println!("Loaded ROM: Success");
+            println!("Memory: {:?}", chip8.mem);
+        },
+        Err(e) => {
+            eprintln!("There was a problem loading the ROM :(. {:?}", e);
+            process::exit(1);
+        }
+    }
+}
+
+fn parse_args() -> (String, u32) {
     let app = Command::new("Chip8")
         .version("0.1.0")
         .author("Nate")
@@ -41,38 +86,5 @@ fn main() {
         .value_of("path")
         .expect("Path argument is not defined");
 
-    let mut rom = Vec::new();
-
-    OpenOptions::new()
-        .read(true)
-        .open(path)
-        .expect("ROM does not exist")
-        .read_to_end(&mut rom)
-        .expect("Could not read ROM");
-
-    let mut chip8 = Chip8::new(rand::random());
-    match chip8.load_rom(&rom) {
-        Ok(_) => {
-            println!("Loaded ROM: Success");
-            println!("Memory: {:?}", chip8.mem);
-        },
-        Err(_) => {
-            
-        }
-    }
-
-    run(scale, &mut chip8);
-}
-
-fn run<R: RngCore>(scale: u32, chip8: &mut Chip8<R>) {
-    // setup graphics
-    // setup input
-
-    loop {
-        // emulate cycles
-
-        // draw image/update screen
-
-        // get input
-    }
+    (path.to_string(), scale)
 }
