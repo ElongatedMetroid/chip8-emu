@@ -37,7 +37,13 @@ fn run<R: RngCore>(scale: u32, chip8: &mut Chip8<R>) {
     // setup input
 
     loop {
-        // emulate cycles
+        match chip8.frame(0) {
+            Ok(_) => (),
+            Err(e) => {
+                print!("An error occured in simulating the hardware: {:?}", e);
+                process::exit(1);
+            }
+        }
 
         // draw image/update screen
 
