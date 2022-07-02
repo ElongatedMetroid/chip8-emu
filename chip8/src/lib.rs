@@ -7,6 +7,7 @@ const ROM_ADDR: usize = 0x200;
 const MEM_SIZE: usize =  0x1000;
 pub const SCREEN_WIDTH: usize = 64;
 pub const SCREEN_HEIGTH: usize = 32;
+const FRAME_TIME: isize = 16666;
 
 /// Address of SPRITE_CHARS
 const SPRITE_CHARS_ADDR: u16 = 0x0000;
@@ -106,6 +107,30 @@ impl Chip8<SmallRng> {
     }
 }
 
+/// Get the lowest 12 bits of the instruction
+/// These 12 bits should be used as an address
+/// 
+/// # Examples
+/// ```
+/// 0x10 => self.op_jp(nnn!(w0, w1))
+/// 
+/// fn op_jp(&mut self, addr: u16) -> usize {
+///     self.pc = addr;
+///     // snip ...
+/// }
+/// ```
+macro_rules! nnn {
+    ($w0:expr, $w1:expr) => {
+        //  1111 1111
+        // &0000 1111
+        //  0000 0000 0000 1111
+        //  0000 1111 0000 0000
+        // |0000 0000 1111 1111
+        //  0000 1111 1111 1111
+        (($w0 & 0x0f) as u16) << 8 | $w1 as u16
+    };
+}
+
 pub fn lo_nib(b: u8) -> u8 {
     //  1111 1111
     // &0000 1111
@@ -122,6 +147,14 @@ pub fn hi_nib(b: u8) -> u8 {
 }
 
 impl<R: RngCore> Chip8<R> {
+    pub fn tone(&self) -> bool {
+        self.tone
+    }
+
+    pub fn fb(&self) -> [u8; SCREEN_WIDTH * SCREEN_HEIGTH / 8] {
+        self.fb
+    }
+
     pub fn load_rom(&mut self, rom: &[u8]) -> Result<(), Error> {
         if rom.len() > MEM_SIZE - ROM_ADDR {
             return Err(Error::RomTooBig(rom.len()));
@@ -131,21 +164,72 @@ impl<R: RngCore> Chip8<R> {
         Ok(())
     }
 
-    // w0: 
-    // fn step(&mut self, w0: u8, w1: u8) -> Result<usize, Error> {
-    //     Ok(match w0 & 0xf0 {
-    //         0x00 => match w1 {
-    //             0xe0 => self.op_cls(),
-    //             0xee => self.op_ret(),
-    //             _ => self.op_call_rca_1802(nnn!(w0, w1)),
-    //         },
-    //         0x10 => self.op_jp(nnn!(w0, w1)),
-    //         0x20 => self.op_call(nnn!(w0, w1)),
-    //         0x30 => self.op_se(self.v[Reg(lo_nib(w0))], w1),
-    //     })
-    // }
+    /// This funtions executes instructions and simulates hardware for the duartion of a frame
+    pub fn frame(&mut self, keypad: u16) -> Result<(), Error> {
+        // set the keypad to the inputs that were pushed
+        self.keypad = keypad;
+        // if the delay timer is not 0 
+        if self.dt != 0 {
+            // subtract 1 from it
+            self.dt -= 1;
+        }
+        // set the tone equal to true if the sound timer does not equal 0
+        self.tone = if self.st != 0 {
+            // subtract 1
+            self.st -= 1;
+            // return true to the tone
+            true
+        } else {
+            // set tone to false
+            false
+        };
+        // add one frame to time
+        self.time += FRAME_TIME;
 
-    
+        // while the time is greater than 0
+        // in other words go until it has been a frame
+        while self.time > 0 {
+            // If the program counter has gone out of bounds
+            if self.pc as usize > MEM_SIZE - 1 {
+                // Return an error stating the PC went out of bounds
+                return Err(Error::PcOutOfBounds(self.pc));
+            }
+            // fetch byte one of the instuction
+            let w0 = self.mem[self.pc as usize];
+            // fetch byte two of the instruction
+            let w1 = self.mem[self.pc as usize + 1];
+            // get the elapsed time of the step
+            let elapsed_time = self.step(w0, w1)?;
+            // subtract elapsed time from the instruction from the time
+            self.time -= elapsed_time as isize;
+        }
+        Ok(())
+    }
+
+    // w0: 
+    fn step(&mut self, w0: u8, w1: u8) -> Result<usize, Error> {
+        Ok(match w0 & 0xf0 {
+            0x00 => match w1 {
+                0xe0 => self.op_cls(),
+                0xee => self.op_ret(),
+                _ => self.op_call_rca_1802(nnn!(w0, w1)),
+            },
+            
+            _ => return Err(Error::InvalidOp(w0, w1))
+        })
+    }
+
+    fn op_cls(&mut self) -> usize {
+        for b in self.fb.iter_mut() {
+            *b = 0
+        }
+        self.pc += 2;
+        109
+    }
+
+    fn ret() {
+
+    }
 
     /// Set Vx = Vx + b
     fn op_add(&mut self, x: Reg, b: u8) -> usize {
