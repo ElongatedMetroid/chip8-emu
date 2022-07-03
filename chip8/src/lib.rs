@@ -262,8 +262,8 @@ impl<R: RngCore> Chip8<R> {
                     0x1E => self.op_add16(self.v[Reg(lo_nib(w0))]),
                     0x29 => self.op_ld_f(self.v[Reg(lo_nib(w0))]),
                     0x33 => self.op_ld_b(self.v[Reg(lo_nib(w0))]),
-                    0x55 => self.op_ld_i_vx(self.v[Reg(lo_nib(w0))]),
-                    0x65 => self.op_ld_vx_i(self.v[Reg(lo_nib(w0))]),
+                    0x55 => self.op_ld_i_vx(lo_nib(w0)),
+                    0x65 => self.op_ld_vx_i(lo_nib(w0)),
                     _ => return Err(Error::InvalidOp(w0, w1)),
                 }
             }
