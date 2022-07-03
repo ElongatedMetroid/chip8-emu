@@ -41,6 +41,7 @@ pub enum Error {
 
 #[derive(Clone, Copy)]
 struct Reg(u8);
+#[derive(Debug)]
 struct Regs([u8; 0x10]);
 
 impl Regs {
@@ -65,6 +66,7 @@ impl IndexMut<Reg> for Regs {
 
 /// Chip8 Struct
 /// This struct contains all the hardware components of the CHIP-8
+#[derive(Debug)]
 pub struct Chip8<R: RngCore> {
     pub mem: [u8; MEM_SIZE],
     v: Regs,                                    // Register Set
@@ -143,7 +145,7 @@ pub fn hi_nib(b: u8) -> u8 {
     // &1111 0000
     //  1111 0000
     //  0000 1111
-    (b & 0xf0) >> 4
+    (b >> 4) & 0x0f
 }
 
 // TODO: Create cachers for some values
@@ -209,7 +211,7 @@ impl<R: RngCore> Chip8<R> {
 
     // w0: 
     fn step(&mut self, w0: u8, w1: u8) -> Result<usize, Error> {
-        Ok(match hi_nib(w0) {
+        Ok(match w0 & 0xf0 {
             0x00 => match w1 {
                 0xe0 => self.op_cls(),
                 0xee => self.op_ret(),
@@ -272,9 +274,11 @@ impl<R: RngCore> Chip8<R> {
 
     /// Clear the display
     fn op_cls(&mut self) -> usize {
+        // zero out all data in frame buffer
         for b in self.fb.iter_mut() {
             *b = 0
         }
+        // increment program counter
         self.pc += 2;
         109
     }
@@ -283,67 +287,117 @@ impl<R: RngCore> Chip8<R> {
     }
     /// Op: Return from a subroutine.
     fn op_ret(&mut self) -> usize {
-        
+        // decrement stack pointer
+        self.sp -= 1;
+        // set the program counter to the data on the top of the stack
+        self.pc = self.stack[self.sp as usize];
         105
     }
     /// Op: Jump to addr.
     fn op_jp(&mut self, addr: u16) -> usize {
-        
+        // set the program counter to the address
+        self.pc = addr;
         105
     }
     /// Op: Call subroutine at addr.
     fn op_call(&mut self, addr: u16) -> usize {
-        
+        // set the top of the stack to the program counter + 2
+        self.stack[self.sp as usize] = self.pc + 2;
+        // increment stack pointer
+        self.sp += 1;
+        // set the program counter to the address
+        self.pc = addr;
         105
     }
     /// Op: Skip next instruction if a == b.
     fn op_se(&mut self, a: u8, b: u8) -> usize {
-        
+        // if a is equal to b...
+        if a == b {
+            // skip the next instruction
+            self.pc += 4;
+        } else {
+            // otherwise go to the next instruction
+            self.pc += 2;
+        }
         61
     }
     /// Op: Skip next instruction if a != b.
     fn op_sne(&mut self, a: u8, b: u8) -> usize {
-        
+        if a != b {
+            self.pc += 4;
+        } else {
+            self.pc += 2;
+        }
         61
     }
     /// Op: Set Vx = v.
     fn op_ld(&mut self, x: Reg, v: u8) -> usize {
-        
+        self.v[x] = v;
+        self.pc += 2;
         27
     }
     /// Op: Wait for a key press, store the value of the key in Vx.
     fn op_ld_vx_k(&mut self, x: Reg) -> usize {
-        
+        for i in 0..0x10 {
+            // if there was a keypress on any button
+            if 1 << i & self.keypad != 0 {
+                // store the value of the key in Vx
+                self.v[x] = i as u8;
+                // increment the program counter
+                self.pc += 2;
+                break;
+            }
+        }
         200
     }
     /// Op: Set delay timer = Vx.
     fn op_ld_dt(&mut self, v: u8) -> usize {
-        
+        // set the delay timer
+        self.dt = v;
+        // go to next instruction
+        self.pc += 2;
         45
     }
     /// Op: Set sound timer = Vx.
     fn op_ld_st(&mut self, v: u8) -> usize {
-        
+        self.st = v;
+        self.pc += 2;
         45
     }
     /// Op: Set I = location of sprite for digit v.
     fn op_ld_f(&mut self, v: u8) -> usize {
-        
+        // set I to the character sprite for v
+        self.i = SPRITE_CHARS_ADDR + v as u16 * 5;
+        self.pc += 2;
         91
     }
     /// Op: Store BCD representation of v in memory locations I, I+1, and I+2.
     fn op_ld_b(&mut self, v: u8) -> usize {
-        
+        let d2 = v / 100;
+        let v = v - d2 * 100;
+        let d1 = v / 10;
+        let v = v - d1 * 10;
+        let d0 = v / 1;
+        self.mem[self.i as usize + 0] = d2;
+        self.mem[self.i as usize + 1] = d1;
+        self.mem[self.i as usize + 2] = d0;
+        self.pc += 2;
         927
     }
     /// Op: Store registers V0 through Vx in memory starting at location I.
     fn op_ld_i_vx(&mut self, x: u8) -> usize {
-        
+        for i in 0..x + 1 {
+            self.mem[self.i as usize + i as usize] = self.v[Reg(i)];
+        }
+        self.pc += 2;
         605
     }
     /// Op: Read registers V0 through Vx from memory starting at location I.
     fn op_ld_vx_i(&mut self, x: u8) -> usize {
-        
+        for i in 0..x + 1 {
+            self.v[Reg(i)] = self.mem[self.i as usize + i as usize];
+        }
+        self.pc += 2;
         605
     }
     /// Set Vx = Vx + b
@@ -362,67 +416,115 @@ impl<R: RngCore> Chip8<R> {
     }
     /// Op: Set I = I + b.
     fn op_add16(&mut self, b: u8) -> usize {
-        
+        self.i += b as u16;
+        self.pc += 2;
         86
     }
     /// Op: Set Vx = Vx OR b.
     fn op_or(&mut self, x: Reg, b: u8) -> usize {
-        
+        self.v[x] |= b;
+        self.pc += 2;
         200
     }
     /// Op: Set Vx = Vx AND b.
     fn op_and(&mut self, x: Reg, b: u8) -> usize {
-        
+        self.v[x] &= b;
+        self.pc += 2;
         200
     }
     /// Op: Set Vx = Vx XOR b.
     fn op_xor(&mut self, x: Reg, b: u8) -> usize {
-        
+        self.v[x] ^= b;
+        self.pc += 2;
         200
     }
     /// Op: Set Vx = Vx - b.
     fn op_sub(&mut self, x: Reg, b: u8) -> usize {
-        
+        let (res, overflow) = self.v[x].overflowing_sub(b);
+        self.v[x] = res;
+        self.v[Reg(0xf)] = if overflow { 0 } else { 1 };
+        self.pc += 2;
         200
     }
     /// Op: Set Vx = b - Vx, set Vf = NOT borrow.
     fn op_subn(&mut self, x: Reg, b: u8) -> usize {
-        
+        let (res, overflow) = b.overflowing_sub(self.v[x]);
+        self.v[x] = res;
+        self.v[Reg(0xf)] = if overflow { 0 } else { 1 };
+        self.pc += 2;
         200
     }
     /// Op: Set Vx = Vx >> 1.
     fn op_shr(&mut self, x: Reg) -> usize {
-        
+        self.v[Reg(0xf)] = self.v[x] & 0b00000001;
+        let (res, _) = self.v[x].overflowing_shr(1);
+        self.v[x] = res;
+        self.pc += 2;
         200
     }
     /// Op: Set Vx = Vx << 1.
     fn op_shl(&mut self, x: Reg) -> usize {
-        
+        self.v[Reg(0xf)] = (self.v[x] & 0b10000000) >> 7;
+        let (res, _) = self.v[x].overflowing_shl(1);
+        self.v[x] = res;
+        self.pc += 2;
         200
     }
     /// Op: Set I = addr
     fn op_ld_i(&mut self, addr: u16) -> usize {
-        
+        self.i = addr;
+        self.pc += 2;
         55
     }
     /// Op: Set Vx = random byte AND v
     fn op_rnd(&mut self, x: Reg, v: u8) -> usize {
-        
+        self.v[x] = (self.rng.next_u32() as u8) & v;
+        self.pc += 2;
         164
     }
     /// Op: Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision.
     fn op_drw(&mut self, pos_x: u8, pos_y: u8, n: u8) -> usize {
-        
+        let pos_x = pos_x % 64;
+        let pos_y = pos_y % 32;
+        let fb = &mut self.fb;
+        let shift = pos_x % 8;
+        let col_a = pos_x as usize / 8;
+        let col_b = (col_a + 1) % (SCREEN_WIDTH / 8);
+        let mut collision = 0;
+        for i in 0..(n as usize) {
+            let byte = self.mem[self.i as usize + i];
+            let y = (pos_y as usize + i) % SCREEN_HEIGTH;
+            let a = byte >> shift;
+            let fb_a = &mut fb[y * SCREEN_WIDTH / 8 + col_a];
+            collision |= *fb_a & a;
+            *fb_a ^= a;
+            if shift != 0 {
+                let b = byte << (8 - shift);
+                let fb_b = &mut fb[y * SCREEN_WIDTH / 8 + col_b];
+                collision |= *fb_b & b;
+                *fb_b ^= b;
+            }
+        }
+        self.v[Reg(0xf)] = if collision != 0 { 1 } else { 0 };
+        self.pc += 2;
         22734
     }
     /// Op: Skip next instruction if key with the value of v is pressed.
     fn op_skp(&mut self, v: u8) -> usize {
-        
+        if 1 << v & self.keypad != 0 {
+            self.pc += 4;
+        } else {
+            self.pc += 2;
+        }
         73
     }
     /// Op: Skip next instruction if key with the value of v is not pressed.
     fn op_sknp(&mut self, v: u8) -> usize {
-        
+        if 1 << v & self.keypad == 0 {
+            self.pc += 4;
+        } else {
+            self.pc += 2;
+        }
         73
     }
 }
