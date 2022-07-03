@@ -146,6 +146,7 @@ pub fn hi_nib(b: u8) -> u8 {
     (b & 0xf0) >> 4
 }
 
+// TODO: Create cachers for some values
 impl<R: RngCore> Chip8<R> {
     pub fn tone(&self) -> bool {
         self.tone
@@ -208,17 +209,68 @@ impl<R: RngCore> Chip8<R> {
 
     // w0: 
     fn step(&mut self, w0: u8, w1: u8) -> Result<usize, Error> {
-        Ok(match w0 & 0xf0 {
+        Ok(match hi_nib(w0) {
             0x00 => match w1 {
                 0xe0 => self.op_cls(),
                 0xee => self.op_ret(),
                 _ => self.op_call_rca_1802(nnn!(w0, w1)),
             },
-            
+            0x10 => self.op_jp(nnn!(w0, w1)),
+            0x20 => self.op_call(nnn!(w0, w1)),
+            0x30 => self.op_se(self.v[Reg(lo_nib(w0))], w1),
+            0x40 => self.op_sne(self.v[Reg(lo_nib(w0))], w1),
+            0x50 => self.op_se(self.v[Reg(lo_nib(w0))], self.v[Reg(hi_nib(w1))]),
+            0x60 => self.op_ld(Reg(lo_nib(w0)), w1),
+            0x70 => self.op_add(Reg(lo_nib(w0)), w1),
+            0x80 => {
+                let x = Reg(lo_nib(w0));
+                let y = self.v[Reg(hi_nib(w1))];
+
+                match lo_nib(w1) {
+                    0x00 => self.op_ld(x, y),
+                    0x01 => self.op_or(x, y),
+                    0x02 => self.op_and(x, y),
+                    0x03 => self.op_xor(x, y),
+                    0x04 => self.op_add(x, y),
+                    0x05 => self.op_sub(x, y),
+                    0x06 => self.op_shr(x),
+                    0x07 => self.op_subn(x, y),
+                    0x0E => self.op_shl(x),
+                    _ => return Err(Error::InvalidOp(w0, w1)),
+                }
+            },
+            0x90 => self.op_sne(self.v[Reg(lo_nib(w0))], self.v[Reg(hi_nib(w1))]),
+            0xA0 => self.op_ld_i(nnn!(w0, w1)),
+            0xB0 => self.op_jp(nnn!(w0, w1)),
+            0xC0 => self.op_rnd(Reg(lo_nib(w0)), w1),
+            0xD0 => self.op_drw(self.v[Reg(lo_nib(w0))], self.v[Reg(hi_nib(w1))], lo_nib(w1)),
+            0xE0 => {
+                match w1 {
+                    0x9E => self.op_skp(self.v[Reg(lo_nib(w0))]),
+                    0xA1 => self.op_sknp(self.v[Reg(lo_nib(w0))]),
+                    _ => return Err(Error::InvalidOp(w0, w1)),
+                }
+            },
+            0xF0 => {
+                match w1 {
+                    0x07 => self.op_ld(Reg(lo_nib(w0)), self.dt),
+                    0x0A => self.op_ld_vx_k(Reg(lo_nib(w0))),
+                    0x15 => self.op_ld_dt(self.v[Reg(lo_nib(w0))]),
+                    0x18 => self.op_ld_st(self.v[Reg(lo_nib(w0))]),
+                    0x1E => self.op_add16(self.v[Reg(lo_nib(w0))]),
+                    0x29 => self.op_ld_f(self.v[Reg(lo_nib(w0))]),
+                    0x33 => self.op_ld_b(self.v[Reg(lo_nib(w0))]),
+                    0x55 => self.op_ld_i_vx(self.v[Reg(lo_nib(w0))]),
+                    0x65 => self.op_ld_vx_i(self.v[Reg(lo_nib(w0))]),
+                    _ => return Err(Error::InvalidOp(w0, w1)),
+                }
+            }
+
             _ => return Err(Error::InvalidOp(w0, w1))
         })
     }
 
+    /// Clear the display
     fn op_cls(&mut self) -> usize {
         for b in self.fb.iter_mut() {
             *b = 0
@@ -226,11 +278,74 @@ impl<R: RngCore> Chip8<R> {
         self.pc += 2;
         109
     }
-
-    fn ret() {
-
+    fn op_call_rca_1802(&mut self, _addr: u16) -> usize {
+        100
     }
-
+    /// Op: Return from a subroutine.
+    fn op_ret(&mut self) -> usize {
+        
+        105
+    }
+    /// Op: Jump to addr.
+    fn op_jp(&mut self, addr: u16) -> usize {
+        
+        105
+    }
+    /// Op: Call subroutine at addr.
+    fn op_call(&mut self, addr: u16) -> usize {
+        
+        105
+    }
+    /// Op: Skip next instruction if a == b.
+    fn op_se(&mut self, a: u8, b: u8) -> usize {
+        
+        61
+    }
+    /// Op: Skip next instruction if a != b.
+    fn op_sne(&mut self, a: u8, b: u8) -> usize {
+        
+        61
+    }
+    /// Op: Set Vx = v.
+    fn op_ld(&mut self, x: Reg, v: u8) -> usize {
+        
+        27
+    }
+    /// Op: Wait for a key press, store the value of the key in Vx.
+    fn op_ld_vx_k(&mut self, x: Reg) -> usize {
+        
+        200
+    }
+    /// Op: Set delay timer = Vx.
+    fn op_ld_dt(&mut self, v: u8) -> usize {
+        
+        45
+    }
+    /// Op: Set sound timer = Vx.
+    fn op_ld_st(&mut self, v: u8) -> usize {
+        
+        45
+    }
+    /// Op: Set I = location of sprite for digit v.
+    fn op_ld_f(&mut self, v: u8) -> usize {
+        
+        91
+    }
+    /// Op: Store BCD representation of v in memory locations I, I+1, and I+2.
+    fn op_ld_b(&mut self, v: u8) -> usize {
+        
+        927
+    }
+    /// Op: Store registers V0 through Vx in memory starting at location I.
+    fn op_ld_i_vx(&mut self, x: u8) -> usize {
+        
+        605
+    }
+    /// Op: Read registers V0 through Vx from memory starting at location I.
+    fn op_ld_vx_i(&mut self, x: u8) -> usize {
+        
+        605
+    }
     /// Set Vx = Vx + b
     fn op_add(&mut self, x: Reg, b: u8) -> usize {
         // res = Vx + b, overflow = true if Vx + b overflows, otherwise its false
@@ -244,5 +359,70 @@ impl<R: RngCore> Chip8<R> {
         self.pc += 2;
         // return 45 since 45 microseconds were elapsed
         45
+    }
+    /// Op: Set I = I + b.
+    fn op_add16(&mut self, b: u8) -> usize {
+        
+        86
+    }
+    /// Op: Set Vx = Vx OR b.
+    fn op_or(&mut self, x: Reg, b: u8) -> usize {
+        
+        200
+    }
+    /// Op: Set Vx = Vx AND b.
+    fn op_and(&mut self, x: Reg, b: u8) -> usize {
+        
+        200
+    }
+    /// Op: Set Vx = Vx XOR b.
+    fn op_xor(&mut self, x: Reg, b: u8) -> usize {
+        
+        200
+    }
+    /// Op: Set Vx = Vx - b.
+    fn op_sub(&mut self, x: Reg, b: u8) -> usize {
+        
+        200
+    }
+    /// Op: Set Vx = b - Vx, set Vf = NOT borrow.
+    fn op_subn(&mut self, x: Reg, b: u8) -> usize {
+        
+        200
+    }
+    /// Op: Set Vx = Vx >> 1.
+    fn op_shr(&mut self, x: Reg) -> usize {
+        
+        200
+    }
+    /// Op: Set Vx = Vx << 1.
+    fn op_shl(&mut self, x: Reg) -> usize {
+        
+        200
+    }
+    /// Op: Set I = addr
+    fn op_ld_i(&mut self, addr: u16) -> usize {
+        
+        55
+    }
+    /// Op: Set Vx = random byte AND v
+    fn op_rnd(&mut self, x: Reg, v: u8) -> usize {
+        
+        164
+    }
+    /// Op: Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision.
+    fn op_drw(&mut self, pos_x: u8, pos_y: u8, n: u8) -> usize {
+        
+        22734
+    }
+    /// Op: Skip next instruction if key with the value of v is pressed.
+    fn op_skp(&mut self, v: u8) -> usize {
+        
+        73
+    }
+    /// Op: Skip next instruction if key with the value of v is not pressed.
+    fn op_sknp(&mut self, v: u8) -> usize {
+        
+        73
     }
 }
